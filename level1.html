@@ -35,6 +35,7 @@ function createGame(level) {
     facing: level.start.facing || "down",
     dialog: null, // { lines: [...], i: 0 }
     pendingEnd: null,
+    pendingAfter: null, // 對話播完後要執行的動作 [...]
     pendingMinigame: null, // 對話播完後要開始的小遊戲 { id, win: [...] ... }
     minigame: null, // 正在玩的小遊戲；有的時候不能走路也不能調查，由畫面端處理按鍵
     ended: null, // 結局 id
@@ -173,6 +174,7 @@ function runInteraction(g, o) {
   const it = (o.interactions || []).find((x) => whenOk(g, x.when));
   if (!it) return null;
   applyOps(g, it.do);
+  if (it.after_say && it.after_say.length) g.pendingAfter = it.after_say; // 對話播完才執行的動作（例如講完話才跑走）
   if (it.say && it.say.length) pushDialog(g, it.say);
   else if (!g.dialog) afterDialog(g);
   return it;
@@ -185,6 +187,12 @@ function finishEnd(g) {
 
 // 對話播完（或根本沒有對話）之後：結局生效，或開始小遊戲
 function afterDialog(g) {
+  if (g.pendingAfter) {
+    const ops = g.pendingAfter;
+    g.pendingAfter = null;
+    applyOps(g, ops);
+    if (g.dialog) return; // 這些動作自己又開了對話，等那段播完再說
+  }
   if (g.pendingEnd) finishEnd(g);
   else if (g.pendingMinigame) { g.minigame = g.pendingMinigame; g.pendingMinigame = null; }
 }
@@ -231,6 +239,7 @@ function restore(g, text) {
   g.dialog = null;
   g.pendingEnd = null;
   g.pendingMinigame = null;
+  g.pendingAfter = null;
   g.minigame = null;
 }
 
@@ -517,7 +526,11 @@ window.__ACTORS__ = {};
   // 魚鉤位置。wobble（0 到 0.95）讓速度忽快忽慢：每個來回有一次經過目標時特別慢，另一次特別快，慢的那次就是讓玩家把握的機會；沒寫 wobble 就是等速。
   function mgFrac(s, t) {
     var w = (2 * Math.PI) / (s.period_ms || 2400), a = s.wobble || 0, th = w * t;
-    if (a) {
+    if (s.start_speed > 1) {
+      // 開場快、之後慢下來：一開始速度是 start_speed 倍，用 settle_ms 的時間常數指數衰減到基本速度（period_ms 那個週期），之後等速慢慢晃
+      var tau = s.settle_ms || 2000;
+      th = w * t + (s.start_speed - 1) * w * tau * (1 - Math.exp(-t / tau));
+    } else if (a) {
       var c = Math.max(-1, Math.min(1, (mgTarget(s) - 0.5) / 0.42));
       var beta = Math.PI - Math.acos(c); // 讓最慢的那一刻剛好在目標位置
       th = w * t + a * Math.sin(w * t + beta);
