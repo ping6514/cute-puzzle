@@ -2,11 +2,11 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>第三關：商店街與海堤步道的郵包</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #2b211b; display: flex; align-items: center; justify-content: center; }
-  #game { max-width: 100vw; max-height: 100vh; border: 4px solid #5a4636; border-radius: 8px; background: #f3e3c3; }
+  html, body { margin: 0; height: 100%; background: #2b211b; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  #game { max-width: 100vw; max-height: 100vh; max-height: 100dvh; box-sizing: border-box; border: 4px solid #5a4636; border-radius: 8px; background: #f3e3c3; }
   #help { position: fixed; left: 0; right: 0; bottom: 6px; text-align: center; font: 13px sans-serif; color: #c9b8a6; pointer-events: none; }
 </style>
 </head>
@@ -619,20 +619,79 @@ window.__ACTORS__ = {};
     if (k === "z" || k === "Z" || k === "Enter" || k === " ") { interact(g); save(); return true; }
     return false;
   }
+  // 方向鍵按下與放開（鍵盤與手機虛擬按鍵共用）：按住會連續走
+  function dirDown(dir, repeat) {
+    if (invOpen || g.minigame) return false;
+    if (held.indexOf(dir) < 0) held.push(dir);
+    if (!repeat && !animating() && !g.dialog && !g.ended && !locked()) { tryMove(dir); save(); }
+    return true;
+  }
+  function dirUp(dir) { held = held.filter(function (d) { return d !== dir; }); }
   window.addEventListener("keydown", function (e) {
     var dir = KEYS[e.key];
     if (dir && !invOpen && !g.minigame) {
       e.preventDefault();
-      if (held.indexOf(dir) < 0) held.push(dir);
-      if (!e.repeat && !animating() && !g.dialog && !g.ended && !locked()) { tryMove(dir); save(); }
+      dirDown(dir, e.repeat);
       return;
     }
     if (onKey(e.key)) e.preventDefault();
   });
   window.addEventListener("keyup", function (e) {
     var dir = KEYS[e.key];
-    if (dir) held = held.filter(function (d) { return d !== dir; });
+    if (dir) dirUp(dir);
   });
+
+  // ---- 手機：橫放時的虛擬按鍵（左下方向鍵，右下確定鍵與道具鍵），直放提示橫過來玩 ----
+  var isTouch = !!window.__FORCE_TOUCH__ || ("ontouchstart" in window) || (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0);
+  var ctlEls = {};
+  function ctlPress(name, down) {
+    if (name === "up" || name === "down" || name === "left" || name === "right") { if (down) dirDown(name, false); else dirUp(name); }
+    else if (down && name === "act") onKey("Enter");
+    else if (down && name === "inv") onKey("i");
+  }
+  function buildControls() {
+    var doc = document;
+    var wrap = doc.createElement("div");
+    wrap.style.cssText = "position:fixed;left:0;right:0;bottom:0;top:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none;touch-action:none;";
+    function btn(name, label, css) {
+      var b = doc.createElement("div");
+      b.dataset = { btn: name };
+      b.textContent = label;
+      b.style.cssText = "position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;color:#fff;font:bold 26px sans-serif;background:rgba(60,45,35,0.45);border:2px solid rgba(255,255,255,0.55);border-radius:50%;touch-action:none;-webkit-tap-highlight-color:transparent;" + css;
+      var on = function (e) { if (e.preventDefault) e.preventDefault(); b.style.background = "rgba(255,160,90,0.7)"; ctlPress(name, true); };
+      var off = function (e) { if (e && e.preventDefault) e.preventDefault(); b.style.background = "rgba(60,45,35,0.45)"; ctlPress(name, false); };
+      b.addEventListener("pointerdown", on);
+      b.addEventListener("pointerup", off);
+      b.addEventListener("pointercancel", off);
+      b.addEventListener("pointerleave", off);
+      wrap.appendChild(b);
+      ctlEls[name] = b;
+    }
+    var S = "width:64px;height:64px;", pad = "left:max(16px,env(safe-area-inset-left));bottom:max(16px,env(safe-area-inset-bottom));";
+    btn("up", "▲", S + "left:calc(max(16px,env(safe-area-inset-left)) + 68px);bottom:calc(max(16px,env(safe-area-inset-bottom)) + 136px);");
+    btn("left", "◀", S + "left:max(16px,env(safe-area-inset-left));bottom:calc(max(16px,env(safe-area-inset-bottom)) + 68px);");
+    btn("right", "▶", S + "left:calc(max(16px,env(safe-area-inset-left)) + 136px);bottom:calc(max(16px,env(safe-area-inset-bottom)) + 68px);");
+    btn("down", "▼", S + "left:calc(max(16px,env(safe-area-inset-left)) + 68px);bottom:max(16px,env(safe-area-inset-bottom));");
+    btn("act", "確定", "width:84px;height:84px;font-size:22px;right:max(20px,env(safe-area-inset-right));bottom:max(30px,env(safe-area-inset-bottom));");
+    btn("inv", "道具", "width:56px;height:56px;font-size:16px;right:calc(max(20px,env(safe-area-inset-right)) + 96px);bottom:calc(max(30px,env(safe-area-inset-bottom)) + 90px);");
+    var hint = doc.createElement("div");
+    hint.textContent = "請把手機橫過來玩";
+    hint.style.cssText = "position:absolute;left:0;right:0;top:0;bottom:0;display:none;align-items:center;justify-content:center;background:rgba(30,22,16,0.92);color:#f3e3c3;font:bold 28px sans-serif;pointer-events:auto;";
+    wrap.appendChild(hint);
+    ctlEls.hint = hint;
+    doc.body.appendChild(wrap);
+    function layout() {
+      var portrait = window.innerHeight > window.innerWidth;
+      hint.style.display = portrait ? "flex" : "none";
+      for (var k in ctlEls) if (k !== "hint") ctlEls[k].style.display = portrait ? "none" : "flex";
+    }
+    layout();
+    window.addEventListener("resize", layout);
+    window.addEventListener("orientationchange", layout);
+    var help = doc.getElementById("help");
+    if (help && help.style) help.style.display = "none"; // 手機沒有鍵盤，不顯示鍵盤說明
+  }
+  if (isTouch) { try { buildControls(); } catch (err) { /* 沒有 DOM 的環境（例如試玩）就算了 */ } }
   window.addEventListener("blur", function () { held = []; });
   // 手機或沒有鍵盤時的點擊：點畫面等於調查
   canvas.addEventListener("click", function (e) {
@@ -646,7 +705,7 @@ window.__ACTORS__ = {};
   });
 
   // 無頭試玩用：目前有沒有小遊戲、這一瞬間按下去會不會中
-  window.__cpg = { key: onKey, frame: frame, get game() { return g; }, mg: function () { return g.minigame ? { ok: mgHit() } : null; } };
+  window.__cpg = { key: onKey, frame: frame, get game() { return g; }, get invOpen() { return invOpen; }, mg: function () { return g.minigame ? { ok: mgHit() } : null; } };
   frame();
 })();
 
