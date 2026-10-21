@@ -708,6 +708,7 @@ window.__ACTORS__ = {};
     if (rotated && r && r.width) { cx = (e.clientY - r.top) * (W / r.height); cy = (r.right - e.clientX) * (H / r.width); } // 轉了 90 度：畫面的上下是遊戲的左右
     if (cx >= 8 && cx <= invBarWidth() && cy >= 8 && cy <= 36) { onKey("i"); return; } // 點左上角的道具列
     if (invOpen) { setInv(false); return; }
+    if (isTouch) return; // 手機版：只有虛擬「確定」鍵能調查與翻對話，點畫面（尤其是按鍵旁邊的空隙）不觸發，免得誤觸
     interact(g); save();
   });
 
