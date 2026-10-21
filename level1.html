@@ -6,12 +6,15 @@
 <title>第一關：魚乾出公寓</title>
 <style>
   html, body { margin: 0; height: 100%; background: #2b211b; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-  #game { max-width: 100vw; max-height: 100vh; max-height: 100dvh; box-sizing: border-box; border: 4px solid #5a4636; border-radius: 8px; background: #f3e3c3; }
+  #stage { position: relative; width: 100vw; height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center; }
+  /* 手動旋轉：整個舞台（畫面加虛擬按鍵）轉 90 度，寬高對調 */
+  #stage.rot { position: fixed; left: 50%; top: 50%; width: 100vh; width: 100dvh; height: 100vw; transform: translate(-50%, -50%) rotate(90deg); }
+  #game { max-width: 100%; max-height: 100%; box-sizing: border-box; border: 4px solid #5a4636; border-radius: 8px; background: #f3e3c3; }
   #help { position: fixed; left: 0; right: 0; bottom: 6px; text-align: center; font: 13px sans-serif; color: #c9b8a6; pointer-events: none; }
 </style>
 </head>
 <body>
-<canvas id="game"></canvas>
+<div id="stage"><canvas id="game"></canvas></div>
 <div id="help">方向鍵或 WASD 走路 · Z / Enter / 空白 調查與翻頁 · I 道具 · R 重玩</div>
 <script>
 // 可愛解謎小遊戲 · 核心邏輯（魚乾寫）。純邏輯，沒有畫面與 DOM：
@@ -641,9 +644,16 @@ window.__ACTORS__ = {};
     if (dir) dirUp(dir);
   });
 
-  // ---- 手機：橫放時的虛擬按鍵（左下方向鍵，右下確定鍵與道具鍵），直放提示橫過來玩 ----
+  // ---- 手機：虛擬按鍵（左下方向鍵，右下確定鍵與道具鍵，右上旋轉鍵），橫放直放都能玩，不強迫橫放 ----
   var isTouch = !!window.__FORCE_TOUCH__ || ("ontouchstart" in window) || (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0);
   var ctlEls = {};
+  var stage = document.getElementById("stage");
+  var rotated = false;
+  function setRot(on) {
+    rotated = !!on;
+    if (stage) stage.className = rotated ? "rot" : "";
+    try { localStorage.setItem("cpg_rot", rotated ? "1" : "0"); } catch (err) { /* 存不了就算了 */ }
+  }
   function ctlPress(name, down) {
     if (name === "up" || name === "down" || name === "left" || name === "right") { if (down) dirDown(name, false); else dirUp(name); }
     else if (down && name === "act") onKey("Enter");
@@ -652,7 +662,7 @@ window.__ACTORS__ = {};
   function buildControls() {
     var doc = document;
     var wrap = doc.createElement("div");
-    wrap.style.cssText = "position:fixed;left:0;right:0;bottom:0;top:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none;touch-action:none;";
+    wrap.style.cssText = "position:absolute;left:0;right:0;bottom:0;top:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none;touch-action:none;";
     function btn(name, label, css) {
       var b = doc.createElement("div");
       b.dataset = { btn: name };
@@ -674,20 +684,16 @@ window.__ACTORS__ = {};
     btn("down", "▼", S + "left:calc(max(16px,env(safe-area-inset-left)) + 68px);bottom:max(16px,env(safe-area-inset-bottom));");
     btn("act", "確定", "width:84px;height:84px;font-size:22px;right:max(20px,env(safe-area-inset-right));bottom:max(30px,env(safe-area-inset-bottom));");
     btn("inv", "道具", "width:56px;height:56px;font-size:16px;right:calc(max(20px,env(safe-area-inset-right)) + 96px);bottom:calc(max(30px,env(safe-area-inset-bottom)) + 90px);");
-    var hint = doc.createElement("div");
-    hint.textContent = "請把手機橫過來玩";
-    hint.style.cssText = "position:absolute;left:0;right:0;top:0;bottom:0;display:none;align-items:center;justify-content:center;background:rgba(30,22,16,0.92);color:#f3e3c3;font:bold 28px sans-serif;pointer-events:auto;";
-    wrap.appendChild(hint);
-    ctlEls.hint = hint;
-    doc.body.appendChild(wrap);
-    function layout() {
-      var portrait = window.innerHeight > window.innerWidth;
-      hint.style.display = portrait ? "flex" : "none";
-      for (var k in ctlEls) if (k !== "hint") ctlEls[k].style.display = portrait ? "none" : "flex";
-    }
-    layout();
-    window.addEventListener("resize", layout);
-    window.addEventListener("orientationchange", layout);
+    // 手動旋轉鍵（右上角）：整個畫面連虛擬按鍵轉 90 度，給手機鎖定直放、又想橫著玩時用；再按一次轉回來，選擇會記住
+    var rb = doc.createElement("div");
+    rb.dataset = { btn: "rot" };
+    rb.textContent = "⟳";
+    rb.style.cssText = "position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;color:#fff;font:bold 26px sans-serif;background:rgba(60,45,35,0.45);border:2px solid rgba(255,255,255,0.55);border-radius:50%;touch-action:none;-webkit-tap-highlight-color:transparent;width:48px;height:48px;right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));";
+    rb.addEventListener("pointerdown", function (e) { if (e.preventDefault) e.preventDefault(); setRot(!rotated); });
+    wrap.appendChild(rb);
+    ctlEls.rot = rb;
+    (stage || doc.body).appendChild(wrap);
+    try { if (localStorage.getItem("cpg_rot") === "1") setRot(true); } catch (err) { /* 讀不到偏好就維持不旋轉 */ }
     var help = doc.getElementById("help");
     if (help && help.style) help.style.display = "none"; // 手機沒有鍵盤，不顯示鍵盤說明
   }
@@ -699,13 +705,14 @@ window.__ACTORS__ = {};
     if (g.minigame) { mgPress(); return; }
     var r = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
     var cx = r && r.width ? (e.clientX - r.left) * (W / r.width) : -1, cy = r && r.height ? (e.clientY - r.top) * (H / r.height) : -1;
+    if (rotated && r && r.width) { cx = (e.clientY - r.top) * (W / r.height); cy = (r.right - e.clientX) * (H / r.width); } // 轉了 90 度：畫面的上下是遊戲的左右
     if (cx >= 8 && cx <= invBarWidth() && cy >= 8 && cy <= 36) { onKey("i"); return; } // 點左上角的道具列
     if (invOpen) { setInv(false); return; }
     interact(g); save();
   });
 
   // 無頭試玩用：目前有沒有小遊戲、這一瞬間按下去會不會中
-  window.__cpg = { key: onKey, frame: frame, get game() { return g; }, get invOpen() { return invOpen; }, mg: function () { return g.minigame ? { ok: mgHit() } : null; } };
+  window.__cpg = { key: onKey, frame: frame, get game() { return g; }, get invOpen() { return invOpen; }, get rotated() { return rotated; }, mg: function () { return g.minigame ? { ok: mgHit() } : null; } };
   frame();
 })();
 
